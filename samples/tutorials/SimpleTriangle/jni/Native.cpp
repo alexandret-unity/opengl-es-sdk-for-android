@@ -190,13 +190,13 @@ static int s_Step = 0;
 // Statistics
 static const int k_MaxStatCount = 100;
 static int s_StatCount = 0;
-static vector<int> s_TimingsO(k_MaxStatCount);
-static vector<int> s_TimingsSMSR(k_MaxStatCount);
-static vector<int> s_TimingsSMDR(k_MaxStatCount);
-static vector<int> s_TimingsDM(k_MaxStatCount);
-static vector<int> s_TimingsSMSRScissors(k_MaxStatCount);
-static vector<int> s_TimingsSMSRColor(k_MaxStatCount);
-static vector<int> s_TimingsSMSRDepth(k_MaxStatCount);
+static vector<int> s_TimingsO;
+static vector<int> s_TimingsSMSR;
+static vector<int> s_TimingsSMDR;
+static vector<int> s_TimingsDM;
+static vector<int> s_TimingsSMSRScissors;
+static vector<int> s_TimingsSMSRColor;
+static vector<int> s_TimingsSMSRDepth;
 
 void renderFrame()
 {
@@ -243,7 +243,7 @@ void renderFrame()
 
     // Warmup, Draw the last triangle
     {
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<void*>((k_Instances-1)*6*sizeof(float)));
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, (void*)((k_Instances-1)*6*sizeof(float)));
         glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
     }
 
@@ -318,7 +318,7 @@ void renderFrame()
         glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
         for (int i = 0; i < k_Instances; ++i)
         {
-            glUniform4f(fColor, 1, ((float)i) / k_Instances, 0, 1);
+            glUniform4f(fColor, 1, ((float)k_Instances - i) / k_Instances, 0, 1);
             glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
         }
         auto t1 = high_resolution_clock::now();
@@ -342,6 +342,7 @@ void renderFrame()
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
         s_TimingsSMSRDepth.push_back(static_cast<int>(dt_us.count()));
+        glDisable(GL_DEPTH_TEST);
     }
 
     // Flush Statistics
@@ -374,9 +375,8 @@ void renderFrame()
         s_TimingsSMSRDepth.clear();
         s_StatCount = 0;
     }
-    
-    if(++s_Step == 8)
-        s_Step = 0;
+
+    s_Step = (s_Step + 1) % 8;
 }
 /* [renderFrame] */
 
