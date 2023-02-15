@@ -193,6 +193,7 @@ static vector<int> s_TimingsSMDR(k_MaxStatCount);
 static vector<int> s_TimingsDM(k_MaxStatCount);
 static vector<int> s_TimingsSMSRScissors(k_MaxStatCount);
 static vector<int> s_TimingsSMSRColor(k_MaxStatCount);
+static vector<int> s_TimingsSMSRDepth(k_MaxStatCount);
 
 void renderFrame()
 {
@@ -306,8 +307,31 @@ void renderFrame()
         s_TimingsSMSRColor.push_back(static_cast<int>(dt_us.count()));
     }
 
+    // Draw Same Mesh, Same Range, Depth Test Change
+    if(s_Step == 6)
+    {
+        GLint depthBits;
+        //glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_DEPTH_BITS, &depthBits);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_DEPTH_SIZE, &depthBits);
+        if(depthBits < 8 || depthBits > 32)
+            LOGI("ERROR DEPTH BITS");
+
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        bool whatever = false;
+        for (int i = 0; i < k_Instances; ++i)
+        {
+            glDepthFunc(whatever ? GL_EQUAL : GL_NOTEQUAL);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            whatever = !whatever;
+        }
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMSRDepth.push_back(static_cast<int>(dt_us.count()));
+    }
+
     // Flush Statistics
-    if(s_Step == 6 && ++s_StatCount == k_MaxStatCount)
+    if(s_Step == 7 && ++s_StatCount == k_MaxStatCount)
     {
         sort(s_TimingsO.begin(), s_TimingsO.end());
         sort(s_TimingsSMSR.begin(), s_TimingsSMSR.end());
@@ -315,15 +339,17 @@ void renderFrame()
         sort(s_TimingsDM.begin(), s_TimingsDM.end());
         sort(s_TimingsSMSRScissors.begin(), s_TimingsSMSRScissors.end());
         sort(s_TimingsSMSRColor.begin(), s_TimingsSMSRColor.end());
+        sort(s_TimingsSMSRDepth.begin(), s_TimingsSMSRDepth.end());
 
         int medianIndex = s_StatCount >> 1;
-        LOGI("O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d",
+        LOGI("O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d",
             s_TimingsO[medianIndex],
             s_TimingsSMSR[medianIndex],
             s_TimingsSMDR[medianIndex],
             s_TimingsDM[medianIndex],
             s_TimingsSMSRScissors[medianIndex],
-            s_TimingsSMSRColor[medianIndex]);
+            s_TimingsSMSRColor[medianIndex],
+            s_TimingsSMSRDepth[medianIndex]);
 
         s_TimingsO.clear();
         s_TimingsSMSR.clear();
@@ -331,10 +357,11 @@ void renderFrame()
         s_TimingsDM.clear();
         s_TimingsSMSRScissors.clear();
         s_TimingsSMSRColor.clear();
+        s_TimingsSMSRDepth.clear();
         s_StatCount = 0;
     }
     
-    if(++s_Step == 7)
+    if(++s_Step == 8)
         s_Step = 0;
 }
 /* [renderFrame] */
