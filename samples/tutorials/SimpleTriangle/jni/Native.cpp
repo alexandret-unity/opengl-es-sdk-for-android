@@ -180,6 +180,9 @@ bool setupGraphics(int w, int h)
 /* [renderFrame] */
 static bool initialized = false;
 static GLfloat * verts = nullptr;
+static GLushort * indices = nullptr;
+static GLuint vbo = 0;
+static GLuint ibo = 0;
 
 // Frame Duty
 static int s_Step = 0;
@@ -214,6 +217,19 @@ void renderFrame()
             verts[i+5] = -0.1f;
         }
 
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * vertCount, verts, GL_STATIC_DRAW);
+
+        int indexCount = k_Instances * 3;
+        indices = new GLushort[indexCount];
+        for(int i = 0 ; i < indexCount ; ++i)
+            indices[i] = i;
+
+        glGenBuffers(1, &ibo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,  sizeof(GLushort) * indexCount, indices, GL_STATIC_DRAW);
+
         initialized = true;
     }
 
@@ -222,19 +238,21 @@ void renderFrame()
     glUseProgram(simpleTriangleProgram);
     glEnableVertexAttribArray(vPosition);
     glUniform4f(fColor, 1, 0, 0, 1);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
 
     // Warmup, Draw the last triangle
     {
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, &verts[(k_Instances-1)*6]);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<void*>((k_Instances-1)*6*sizeof(float)));
+        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
     }
 
     // Draw Once
     if(s_Step == 0)
     {
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
-        glDrawArrays(GL_TRIANGLES, 0, 3 * k_Instances);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glDrawElements(GL_TRIANGLES, k_Instances * 3, GL_UNSIGNED_SHORT, 0);
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
         s_TimingsO.push_back(static_cast<int>(dt_us.count()));
@@ -244,9 +262,10 @@ void renderFrame()
     if(s_Step == 1)
     {
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
-        for (int i = 0; i < k_Instances; ++i)
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        for (int i = 0; i < k_Instances; ++i) {
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
+        }
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
         s_TimingsSMSR.push_back(static_cast<int>(dt_us.count()));
@@ -256,9 +275,9 @@ void renderFrame()
     if(s_Step == 2)
     {
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
         for (int i = 0; i < k_Instances; ++i)
-            glDrawArrays(GL_TRIANGLES, i * 3, 3);
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void*)(i*3*sizeof(GLushort)));
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
         s_TimingsSMDR.push_back(static_cast<int>(dt_us.count()));
@@ -269,8 +288,8 @@ void renderFrame()
     {
         auto t0 = high_resolution_clock::now();
         for (int i = 0; i < k_Instances; ++i) {
-            glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, &verts[i * 6]);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, (void*)(i * 6 * sizeof(GLfloat)));
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
         }
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
@@ -281,11 +300,11 @@ void renderFrame()
     if(s_Step == 4)
     {
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
         for (int i = 0; i < k_Instances; ++i)
         {
             glScissor(0, 0, 10+i, 10+i);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
         }
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
@@ -296,11 +315,11 @@ void renderFrame()
     if(s_Step == 5)
     {
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
         for (int i = 0; i < k_Instances; ++i)
         {
             glUniform4f(fColor, 1, ((float)i) / k_Instances, 0, 1);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
         }
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
@@ -312,12 +331,12 @@ void renderFrame()
     {
         glEnable(GL_DEPTH_TEST);
         auto t0 = high_resolution_clock::now();
-        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
         bool whatever = false;
         for (int i = 0; i < k_Instances; ++i)
         {
             glDepthFunc(whatever ? GL_EQUAL : GL_NOTEQUAL);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
             whatever = !whatever;
         }
         auto t1 = high_resolution_clock::now();
