@@ -29,6 +29,13 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include <algorithm>
+#include <chrono>
+#include <vector>
+
+using namespace std;
+using namespace std::chrono;
+
 #define LOG_TAG "libNative"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -46,9 +53,10 @@ static const char glVertexShader[] =
 /* [Fragment source] */
 static const char glFragmentShader[] =
         "precision mediump float;\n"
+        "uniform lowp vec4 fColor;\n"
         "void main()\n"
         "{\n"
-        "  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "  gl_FragColor = fColor;\n"
         "}\n";
 /* [Fragment source] */
 
@@ -146,6 +154,7 @@ GLuint createProgram(const char* vertexSource, const char * fragmentSource)
 /* [setupGraphics] */
 GLuint simpleTriangleProgram;
 GLuint vPosition;
+GLuint fColor;
 
 bool setupGraphics(int w, int h)
 {
@@ -158,6 +167,9 @@ bool setupGraphics(int w, int h)
     }
 
     vPosition = glGetAttribLocation(simpleTriangleProgram, "vPosition");
+    fColor = glGetUniformLocation(simpleTriangleProgram, "fColor");
+
+    LOGI("fColor=%d",fColor);
 
     glViewport(0, 0, w, h);
 
@@ -166,20 +178,164 @@ bool setupGraphics(int w, int h)
 /* [setupGraphics] */
 
 /* [renderFrame] */
-const GLfloat triangleVertices[] = {
-        0.0f, 1.0f,
-        -1.0f, -1.0f,
-        1.0f, -1.0f
-};
+static bool initialized = false;
+static GLfloat * verts = nullptr;
+
+// Frame Duty
+static int s_Step = 0;
+
+// Statistics
+static const int k_MaxStatCount = 100;
+static int s_StatCount = 0;
+static vector<int> s_TimingsO(k_MaxStatCount);
+static vector<int> s_TimingsSMSR(k_MaxStatCount);
+static vector<int> s_TimingsSMDR(k_MaxStatCount);
+static vector<int> s_TimingsDM(k_MaxStatCount);
+static vector<int> s_TimingsSMSRScissors(k_MaxStatCount);
+static vector<int> s_TimingsSMSRColor(k_MaxStatCount);
 
 void renderFrame()
 {
+    const int k_Instances = 100;
+    const bool useSingleMesh = false;
+
+    if (!initialized)
+    {
+        int vertCount = k_Instances * 6;
+        verts = new GLfloat[vertCount];
+        for(int i = 0 ; i < vertCount; i += 6)
+        {
+            verts[i+0] = 0.0f;
+            verts[i+1] = 0.1f;
+            verts[i+2] = -0.1f;
+            verts[i+3] = -0.1f;
+            verts[i+4] = 0.1f;
+            verts[i+5] = -0.1f;
+        }
+
+        initialized = true;
+    }
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear (GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     glUseProgram(simpleTriangleProgram);
-    glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0 ,triangleVertices);
     glEnableVertexAttribArray(vPosition);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glUniform4f(fColor, 1, 0, 0, 1);
+
+    // Warmup, Draw the last triangle
+    {
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, &verts[(k_Instances-1)*6]);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+
+    // Draw Once
+    if(s_Step == 0)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glDrawArrays(GL_TRIANGLES, 0, 3 * k_Instances);
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsO.push_back(static_cast<int>(dt_us.count()));
+    }
+
+    // Draw Same Mesh, Same Range
+    if(s_Step == 1)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        for (int i = 0; i < k_Instances; ++i)
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMSR.push_back(static_cast<int>(dt_us.count()));
+    }
+    
+    // Draw Same Mesh, Different Ranges
+    if(s_Step == 2)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        for (int i = 0; i < k_Instances; ++i)
+            glDrawArrays(GL_TRIANGLES, i * 3, 3);
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMDR.push_back(static_cast<int>(dt_us.count()));
+    }
+
+    // Draw Different Meshes
+    if(s_Step == 3)
+    {
+        auto t0 = high_resolution_clock::now();
+        for (int i = 0; i < k_Instances; ++i) {
+            glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, &verts[i * 6]);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsDM.push_back(static_cast<int>(dt_us.count()));
+    }
+    
+    // Draw Same Mesh, Same Range, Scissors Change
+    if(s_Step == 4)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        for (int i = 0; i < k_Instances; ++i)
+        {
+            glScissor(0, 0, 10+i, 10+i);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMSRScissors.push_back(static_cast<int>(dt_us.count()));
+    }
+
+    // Draw Same Mesh, Same Range, Color Change
+    if(s_Step == 5)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        for (int i = 0; i < k_Instances; ++i)
+        {
+            glUniform4f(fColor, 1, ((float)i) / k_Instances, 0, 1);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMSRColor.push_back(static_cast<int>(dt_us.count()));
+    }
+
+    // Flush Statistics
+    if(s_Step == 6 && ++s_StatCount == k_MaxStatCount)
+    {
+        sort(s_TimingsO.begin(), s_TimingsO.end());
+        sort(s_TimingsSMSR.begin(), s_TimingsSMSR.end());
+        sort(s_TimingsSMDR.begin(), s_TimingsSMDR.end());
+        sort(s_TimingsDM.begin(), s_TimingsDM.end());
+        sort(s_TimingsSMSRScissors.begin(), s_TimingsSMSRScissors.end());
+        sort(s_TimingsSMSRColor.begin(), s_TimingsSMSRColor.end());
+
+        int medianIndex = s_StatCount >> 1;
+        LOGI("O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d",
+            s_TimingsO[medianIndex],
+            s_TimingsSMSR[medianIndex],
+            s_TimingsSMDR[medianIndex],
+            s_TimingsDM[medianIndex],
+            s_TimingsSMSRScissors[medianIndex],
+            s_TimingsSMSRColor[medianIndex]);
+
+        s_TimingsO.clear();
+        s_TimingsSMSR.clear();
+        s_TimingsSMDR.clear();
+        s_TimingsDM.clear();
+        s_TimingsSMSRScissors.clear();
+        s_TimingsSMSRColor.clear();
+        s_StatCount = 0;
+    }
+    
+    if(++s_Step == 7)
+        s_Step = 0;
 }
 /* [renderFrame] */
 
