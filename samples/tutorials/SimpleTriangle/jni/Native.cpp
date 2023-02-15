@@ -310,12 +310,7 @@ void renderFrame()
     // Draw Same Mesh, Same Range, Depth Test Change
     if(s_Step == 6)
     {
-        GLint depthBits;
-        //glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_DEPTH_BITS, &depthBits);
-        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_DEPTH_SIZE, &depthBits);
-        if(depthBits < 8 || depthBits > 32)
-            LOGI("ERROR DEPTH BITS");
-
+        glEnable(GL_DEPTH_TEST);
         auto t0 = high_resolution_clock::now();
         glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, verts);
         bool whatever = false;
