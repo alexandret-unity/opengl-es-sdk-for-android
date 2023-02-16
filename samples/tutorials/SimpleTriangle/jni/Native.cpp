@@ -58,6 +58,14 @@ static const char glFragmentShader[] =
         "{\n"
         "  gl_FragColor = fColor;\n"
         "}\n";
+
+static const char glFragmentShader2[] =
+        "precision mediump float;\n"
+        "uniform lowp vec4 fColor;\n"
+        "void main()\n"
+        "{\n"
+        "  gl_FragColor = fColor.brga;\n"
+        "}\n";
 /* [Fragment source] */
 
 /* [loadShader] */
@@ -153,6 +161,7 @@ GLuint createProgram(const char* vertexSource, const char * fragmentSource)
 
 /* [setupGraphics] */
 GLuint simpleTriangleProgram;
+GLuint simpleTriangleProgram2;
 GLuint vPosition;
 GLuint fColor;
 
@@ -168,6 +177,13 @@ bool setupGraphics(int w, int h)
 
     vPosition = glGetAttribLocation(simpleTriangleProgram, "vPosition");
     fColor = glGetUniformLocation(simpleTriangleProgram, "fColor");
+
+    simpleTriangleProgram2 = createProgram(glVertexShader, glFragmentShader2);
+    GLuint vPosition2 = glGetAttribLocation(simpleTriangleProgram, "vPosition");
+    GLuint fColor2 = glGetUniformLocation(simpleTriangleProgram, "fColor");
+
+    if (vPosition != vPosition2 || fColor != fColor2)
+        LOGE ("BENCHMARK *** SHADER 2 ERROR");
 
     LOGI("fColor=%d",fColor);
 
@@ -199,17 +215,24 @@ static vector<int> s_TimingsSMSRScissors;
 static vector<int> s_TimingsSMSRColor;
 static vector<int> s_TimingsSMSRDepth;
 static vector<int> s_TimingsSMSRStencil;
+static vector<int> s_TimingsSMSRShader;
 
 void renderFrame()
 {
     const int k_Instances = 100;
     const bool useSingleMesh = false;
-    int indexCount = 65536;
+    int indexCount = 65535;
 
     if (!initialized)
     {
         const GLubyte * version = glGetString(GL_VERSION);
-        LOGI("BENCHMARK *** %s", version);
+        LOGI("BENCHMARK *** Version: %s", version);
+        const GLubyte * shader = glGetString(GL_SHADING_LANGUAGE_VERSION);
+        LOGI("BENCHMARK *** Shader Version: %s", shader);
+        const GLubyte * vendor = glGetString(GL_VENDOR);
+        LOGI("BENCHMARK *** Vendor: %s", vendor);
+        const GLubyte * renderer = glGetString(GL_RENDERER);
+        LOGI("BENCHMARK *** Renderer: %s", renderer);
 
         int vertCount = k_Instances * 6;
         verts = new GLfloat[vertCount];
@@ -381,8 +404,25 @@ void renderFrame()
         glDisable(GL_STENCIL_TEST);
     }
 
+    // Draw Same Mesh, Same Range, Shader Change
+    if(s_Step == 8)
+    {
+        auto t0 = high_resolution_clock::now();
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        bool whatever = false;
+        for (int i = 0; i < k_Instances; ++i)
+        {
+            glUseProgram(whatever ? simpleTriangleProgram : simpleTriangleProgram2);
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, 0);
+            whatever = !whatever;
+        }
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsSMSRShader.push_back(static_cast<int>(dt_us.count()));
+    }
+
     // Flush Statistics
-    if(s_Step == 8 && ++s_StatCount == k_MaxStatCount)
+    if(s_Step == 9 && ++s_StatCount == k_MaxStatCount)
     {
         sort(s_TimingsO.begin(), s_TimingsO.end());
         sort(s_TimingsOCP.begin(), s_TimingsOCP.end());
@@ -393,9 +433,10 @@ void renderFrame()
         sort(s_TimingsSMSRColor.begin(), s_TimingsSMSRColor.end());
         sort(s_TimingsSMSRDepth.begin(), s_TimingsSMSRDepth.end());
         sort(s_TimingsSMSRStencil.begin(), s_TimingsSMSRStencil.end());
+        sort(s_TimingsSMSRShader.begin(), s_TimingsSMSRShader.end());
 
         int medianIndex = s_StatCount >> 1;
-        LOGI("BENCHMARK *** n = %d | O = %d | 0CP = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d",
+        LOGI("BENCHMARK *** n = %d | O = %d | 0CP = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d | SMSRShader = %d",
             k_Instances,
             s_TimingsO[medianIndex],
             s_TimingsOCP[medianIndex],
@@ -405,7 +446,8 @@ void renderFrame()
             s_TimingsSMSRScissors[medianIndex],
             s_TimingsSMSRColor[medianIndex],
             s_TimingsSMSRDepth[medianIndex],
-            s_TimingsSMSRStencil[medianIndex]);
+            s_TimingsSMSRStencil[medianIndex],
+             s_TimingsSMSRShader[medianIndex]);
 
         s_TimingsO.clear();
         s_TimingsOCP.clear();
@@ -416,10 +458,11 @@ void renderFrame()
         s_TimingsSMSRColor.clear();
         s_TimingsSMSRDepth.clear();
         s_TimingsSMSRStencil.clear();
+        s_TimingsSMSRShader.clear();
         s_StatCount = 0;
     }
 
-    s_Step = (s_Step + 1) % 9;
+    s_Step = (s_Step + 1) % 10;
 }
 /* [renderFrame] */
 
