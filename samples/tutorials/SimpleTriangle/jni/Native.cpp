@@ -191,6 +191,7 @@ static int s_Step = 0;
 static const int k_MaxStatCount = 100;
 static int s_StatCount = 0;
 static vector<int> s_TimingsO;
+static vector<int> s_TimingsOCP;
 static vector<int> s_TimingsSMSR;
 static vector<int> s_TimingsSMDR;
 static vector<int> s_TimingsDM;
@@ -203,6 +204,7 @@ void renderFrame()
 {
     const int k_Instances = 100;
     const bool useSingleMesh = false;
+    int indexCount = 65536;
 
     if (!initialized)
     {
@@ -225,7 +227,6 @@ void renderFrame()
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * vertCount, verts, GL_STATIC_DRAW);
 
-        int indexCount = k_Instances * 3;
         indices = new GLushort[indexCount];
         for(int i = 0 ; i < indexCount ; ++i)
             indices[i] = i;
@@ -260,6 +261,18 @@ void renderFrame()
         auto t1 = high_resolution_clock::now();
         auto dt_us = duration_cast<microseconds>(t1 - t0);
         s_TimingsO.push_back(static_cast<int>(dt_us.count()));
+    }
+
+    // Draw Once, Re-Copy Indices
+    if(s_Step == 0)
+    {
+        auto t0 = high_resolution_clock::now();
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,  sizeof(GLushort) * indexCount, indices, GL_STATIC_DRAW);
+        glVertexAttribPointer(vPosition, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glDrawElements(GL_TRIANGLES, k_Instances * 3, GL_UNSIGNED_SHORT, 0);
+        auto t1 = high_resolution_clock::now();
+        auto dt_us = duration_cast<microseconds>(t1 - t0);
+        s_TimingsOCP.push_back(static_cast<int>(dt_us.count()));
     }
 
     // Draw Same Mesh, Same Range
@@ -372,6 +385,7 @@ void renderFrame()
     if(s_Step == 8 && ++s_StatCount == k_MaxStatCount)
     {
         sort(s_TimingsO.begin(), s_TimingsO.end());
+        sort(s_TimingsOCP.begin(), s_TimingsOCP.end());
         sort(s_TimingsSMSR.begin(), s_TimingsSMSR.end());
         sort(s_TimingsSMDR.begin(), s_TimingsSMDR.end());
         sort(s_TimingsDM.begin(), s_TimingsDM.end());
@@ -381,9 +395,10 @@ void renderFrame()
         sort(s_TimingsSMSRStencil.begin(), s_TimingsSMSRStencil.end());
 
         int medianIndex = s_StatCount >> 1;
-        LOGI("BENCHMARK *** n = %d | O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d",
+        LOGI("BENCHMARK *** n = %d | O = %d | 0CP = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d",
             k_Instances,
             s_TimingsO[medianIndex],
+            s_TimingsOCP[medianIndex],
             s_TimingsSMSR[medianIndex],
             s_TimingsSMDR[medianIndex],
             s_TimingsDM[medianIndex],
@@ -393,6 +408,7 @@ void renderFrame()
             s_TimingsSMSRStencil[medianIndex]);
 
         s_TimingsO.clear();
+        s_TimingsOCP.clear();
         s_TimingsSMSR.clear();
         s_TimingsSMDR.clear();
         s_TimingsDM.clear();
