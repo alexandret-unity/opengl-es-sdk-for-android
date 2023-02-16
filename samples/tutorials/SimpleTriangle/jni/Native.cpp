@@ -207,7 +207,7 @@ void renderFrame()
     if (!initialized)
     {
         const GLubyte * version = glGetString(GL_VERSION);
-        LOGI("PERFTEST *** %s", version);
+        LOGI("BENCHMARK *** %s", version);
 
         int vertCount = k_Instances * 6;
         verts = new GLfloat[vertCount];
@@ -381,7 +381,8 @@ void renderFrame()
         sort(s_TimingsSMSRStencil.begin(), s_TimingsSMSRStencil.end());
 
         int medianIndex = s_StatCount >> 1;
-        LOGI("PERFTEST O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d",
+        LOGI("BENCHMARK *** n = %d | O = %d | SMSR = %d | SMDR = %d | DM = %d | SMSRScissors = %d | SMSRColor = %d | SMSRDepth = %d | SMSRStencil = %d",
+            k_Instances,
             s_TimingsO[medianIndex],
             s_TimingsSMSR[medianIndex],
             s_TimingsSMDR[medianIndex],
